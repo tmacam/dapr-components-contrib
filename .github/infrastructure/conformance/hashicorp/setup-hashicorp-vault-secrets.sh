@@ -1,10 +1,10 @@
 #!/bin/sh
 
 # Notice that while hashicorp supports multiple keys in a secret,
-# our confirmance tests needs to go for the common demominator 
+# our conformance tests needs to go for the common demominator
 # which is a secret store that only has name/value semantic.
-# Hence we setup secret containing a single key with the their
-# same name.
+# Hence, we setup each secret containing a single key matching
+# the secret name.
 
 set -eu
 
