@@ -16,13 +16,59 @@ This secret store [supports the following features][features]:
 ## Test network instability
 1. Vault component does not expose a time out configuration option. For this test, let's assume a 1 minute timeout.
 2. Retrieve a key to show the connection is fine.
-3. Interrupt the network (Vault port, 8200) for longer than the established timeout value.
+3. Interrupt the network on Vault's port (8200) for longer than the established timeout value.
 4. Wait a few seconds (less than the timeout value).
 5. Try to read the key from step 2 and assert it is still there.
 
 
 ## Test support for multiple keys under the same secret
-1. Test retrieval of secrets with multiple keys under it
+1. Test retrieval of secrets with multiple keys under it.
+
+## Tests for metadata fields
+
+### Tests for `vaultKVPrefix`, `vaultKVUsePrefix` and `vaultValueTypeText`
+
+1. Verify `vaultKVPrefix` is used
+    * set field to to non default value
+    * run dapr application with component
+    * component should successfully initialize
+    * component should advertise `multipleKeyValuesPerSecret` feature
+    * retrieval of key under registered under new prefix should succeed
+    * keys under default and empty prefixes should be missing
+1. Verify `vaultKVUsePrefix` is used
+    * set field to `false` (non default value)
+    * run dapr application with component
+    * component should successfully initialize
+    * component should advertise `multipleKeyValuesPerSecret` feature
+    * retrieval of key registered without (empty) prefix should succeed
+    * keys under default and non-default prefix from step above should be missing
+1. Verify `vaultValueTypeText` is used
+    * set field to to non default value `text`
+    * run dapr application with component
+    * component should successfully initialize
+    * component should **not** advertise `multipleKeyValuesPerSecret` feature
+    * retrieval of key under registered under new prefix should succeed
+    * keys under default and empty prefixes should be missing
+
+
+## Pending 
+### Tests for `vaultToken` and `vaultTokenMountPath`
+
+1. Verify `vaultToken` is used
+1. Verify `vaultTokenMountPath` is used
+1. Verify failure when both `vaultTokenMountPath` points to a broken path
+1. Verify failure when both `vaultToken` and `vaultTokenMountPath` are missing
+1. Verify failure when both `vaultToken` and `vaultTokenMountPath` are present
+
+1. `enginePath`
+
+1. vaultAddr
+
+1. caCert
+1. caPath
+1. caPem
+1. skipVerify
+
 
 
 ## Out of scope
@@ -35,7 +81,7 @@ This secret store [supports the following features][features]:
 Under the current directory run:
 
 ```
-go test -v vault_test.go
+GOLANG_PROTOBUF_REGISTRATION_CONFLICT=warn go test -v vault_test.go
 ```
 
 # References:
