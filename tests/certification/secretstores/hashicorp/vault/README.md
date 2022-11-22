@@ -51,22 +51,32 @@ This secret store [supports the following features][features]:
     * keys under default and empty prefixes should be missing
 
 
-## Pending 
 ### Tests for `vaultToken` and `vaultTokenMountPath`
 
-1. Verify `vaultToken` is used
+1. Verify `vaultToken` is used (happy case)
     * The baseline fo this test is all the previous test are using a known-to-work value that matches what our docker-compose environment sets up.
-    * Ensure service fails when we use a `vaultToken` value that does not match what our environment sets up
-        * set field to a bogus value <<< BAD Vault TOKEN Value>>>
-
-1. Verify `vaultTokenMountPath` is used
+1. Verify failure when we use a `vaultToken` value that does not match what our environment sets up
+1. Verify `vaultTokenMountPath` is used (happy case)
 1. Verify failure when `vaultTokenMountPath` points to a broken path
 1. Verify failure when both `vaultToken` and `vaultTokenMountPath` are missing
 1. Verify failure when both `vaultToken` and `vaultTokenMountPath` are present
 
+## Pending 
+
+### Tests for enginePath
+
 1. `enginePath`
 
-1. vaultAddr
+
+### Tests for vaultAddr
+
+1. Verify `vaultAddr` is used (happy case)
+    * The baseline fo this test is all the previous test are using a known-to-work value that matches what our docker-compose environment sets up.
+1. Verify `vaultAddr` is used when it points to a non-std port 
+1. Verify failure when `vaultAddr` points to an address not served by a Vault
+1. Verify failure when `vaultAddr` is missing <<<< THIS IS A QUICK TEST, STOPPED HERE>>>>
+
+### Tests for CA and other certificate-related parameters
 
 1. caCert
 1. caPath

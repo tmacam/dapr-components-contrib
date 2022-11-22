@@ -41,7 +41,7 @@ const (
 	sidecarName              = "hashicorp-vault-sidecar"
 	dockerComposeClusterYAML = "../../../../../.github/infrastructure/docker-compose-hashicorp-vault.yml"
 	dockerComposeProjectName = "hashicorp-vault"
-	secretStoreName          = "my-hashicorp-vault" // as set in the component YAML
+	// secretStoreName          = "my-hashicorp-vault" // as set in the component YAML
 
 	networkInstabilityTime   = 1 * time.Minute
 	waitAfterInstabilityTime = networkInstabilityTime / 4
@@ -51,6 +51,7 @@ const (
 func TestBasicSecretRetrieval(t *testing.T) {
 	const (
 		secretStoreComponentPath = "./components/default"
+		secretStoreName          = "my-hashicorp-vault" // as set in the component YAML
 	)
 
 	ports, err := dapr_testing.GetFreePorts(2)
@@ -117,6 +118,7 @@ func TestBasicSecretRetrieval(t *testing.T) {
 func TestMultipleKVRetrieval(t *testing.T) {
 	const (
 		secretStoreComponentPath = "./components/default"
+		secretStoreName          = "my-hashicorp-vault" // as set in the component YAML
 	)
 
 	currentGrpcPort, currentHttpPort := GetCurrentGRPCAndHTTPPort(t)
@@ -136,14 +138,14 @@ func TestMultipleKVRetrieval(t *testing.T) {
 		Step("Verify component has support for multiple key-values under the same secret",
 			testComponentHasFeature(t, currentGrpcPort, secretStoreName, secretstores.FeatureMultipleKeyValuesPerSecret)).
 		Step("Test retrieval of a secret with multiple key-values",
-			testKeyValuesInSecret(t, currentGrpcPort, "multiplekeyvaluessecret", map[string]string{
+			testKeyValuesInSecret(t, currentGrpcPort, secretStoreName, "multiplekeyvaluessecret", map[string]string{
 				"first":  "1",
 				"second": "2",
 				"third":  "3",
 			})).
 		Step("Test secret registered under a non-default vaultKVPrefix cannot be found",
-			testSecretIsNotFound(t, currentGrpcPort, "secretUnderAlternativePrefix")).
-		Step("Test secret registered with no prefix cannot be found", testSecretIsNotFound(t, currentGrpcPort, "secretWithNoPrefix")).
+			testSecretIsNotFound(t, currentGrpcPort, secretStoreName, "secretUnderAlternativePrefix")).
+		Step("Test secret registered with no prefix cannot be found", testSecretIsNotFound(t, currentGrpcPort, secretStoreName, "secretWithNoPrefix")).
 		Step("Stop HashiCorp Vault server", dockercompose.Stop(dockerComposeProjectName, dockerComposeClusterYAML)).
 		Run()
 }
@@ -151,6 +153,7 @@ func TestMultipleKVRetrieval(t *testing.T) {
 func TestVaultKVPrefix(t *testing.T) {
 	const (
 		secretStoreComponentPath = "./components/vaultKVPrefix"
+		secretStoreName          = "my-hashicorp-vault" // as set in the component YAML
 	)
 
 	currentGrpcPort, currentHttpPort := GetCurrentGRPCAndHTTPPort(t)
@@ -170,10 +173,10 @@ func TestVaultKVPrefix(t *testing.T) {
 		Step("Verify component has support for multiple key-values under the same secret",
 			testComponentHasFeature(t, currentGrpcPort, secretStoreName, secretstores.FeatureMultipleKeyValuesPerSecret)).
 		Step("Test retrieval of a secret under a non-default vaultKVPrefix",
-			testKeyValuesInSecret(t, currentGrpcPort, "secretUnderAlternativePrefix", map[string]string{
+			testKeyValuesInSecret(t, currentGrpcPort, secretStoreName, "secretUnderAlternativePrefix", map[string]string{
 				"altPrefixKey": "altPrefixValue",
 			})).
-		Step("Test secret registered with no prefix cannot be found", testSecretIsNotFound(t, currentGrpcPort, "secretWithNoPrefix")).
+		Step("Test secret registered with no prefix cannot be found", testSecretIsNotFound(t, currentGrpcPort, secretStoreName, "secretWithNoPrefix")).
 		Step("Stop HashiCorp Vault server", dockercompose.Stop(dockerComposeProjectName, dockerComposeClusterYAML)).
 		Run()
 }
@@ -181,6 +184,7 @@ func TestVaultKVPrefix(t *testing.T) {
 func TestVaultKVUsePrefixFalse(t *testing.T) {
 	const (
 		secretStoreComponentPath = "./components/vaultKVUsePrefixFalse"
+		secretStoreName          = "my-hashicorp-vault" // as set in the component YAML
 	)
 
 	currentGrpcPort, currentHttpPort := GetCurrentGRPCAndHTTPPort(t)
@@ -200,13 +204,13 @@ func TestVaultKVUsePrefixFalse(t *testing.T) {
 		Step("Verify component has support for multiple key-values under the same secret",
 			testComponentHasFeature(t, currentGrpcPort, secretStoreName, secretstores.FeatureMultipleKeyValuesPerSecret)).
 		Step("Test retrieval of a secret registered with no prefix and assuming vaultKVUsePrefix=false",
-			testKeyValuesInSecret(t, currentGrpcPort, "secretWithNoPrefix", map[string]string{
+			testKeyValuesInSecret(t, currentGrpcPort, secretStoreName, "secretWithNoPrefix", map[string]string{
 				"noPrefixKey": "noProblem",
 			})).
 		Step("Test secret registered under the default vaultKVPrefix cannot be found",
-			testSecretIsNotFound(t, currentGrpcPort, "multiplekeyvaluessecret")).
+			testSecretIsNotFound(t, currentGrpcPort, secretStoreName, "multiplekeyvaluessecret")).
 		Step("Test secret registered under a non-default vaultKVPrefix cannot be found",
-			testSecretIsNotFound(t, currentGrpcPort, "secretUnderAlternativePrefix")).
+			testSecretIsNotFound(t, currentGrpcPort, secretStoreName, "secretUnderAlternativePrefix")).
 		Step("Stop HashiCorp Vault server", dockercompose.Stop(dockerComposeProjectName, dockerComposeClusterYAML)).
 		Run()
 }
@@ -214,6 +218,7 @@ func TestVaultKVUsePrefixFalse(t *testing.T) {
 func TestVaultValueTypeText(t *testing.T) {
 	const (
 		secretStoreComponentPath = "./components/vaultValueTypeText"
+		secretStoreName          = "my-hashicorp-vault" // as set in the component YAML
 	)
 
 	currentGrpcPort, currentHttpPort := GetCurrentGRPCAndHTTPPort(t)
@@ -234,12 +239,12 @@ func TestVaultValueTypeText(t *testing.T) {
 			testComponentDoesNotHaveFeature(t, currentGrpcPort, secretStoreName, secretstores.FeatureMultipleKeyValuesPerSecret)).
 		Step("Test secret store presents name/value semantics for secrets",
 			// result has a single key with tha same name as the secret and a JSON-like content
-			testKeyValuesInSecret(t, currentGrpcPort, "secondsecret", map[string]string{
+			testKeyValuesInSecret(t, currentGrpcPort, secretStoreName, "secondsecret", map[string]string{
 				"secondsecret": "{\"secondsecret\":\"efgh\"}",
 			})).
 		Step("Test secret registered under a non-default vaultKVPrefix cannot be found",
-			testSecretIsNotFound(t, currentGrpcPort, "secretUnderAlternativePrefix")).
-		Step("Test secret registered with no prefix cannot be found", testSecretIsNotFound(t, currentGrpcPort, "secretWithNoPrefix")).
+			testSecretIsNotFound(t, currentGrpcPort, secretStoreName, "secretUnderAlternativePrefix")).
+		Step("Test secret registered with no prefix cannot be found", testSecretIsNotFound(t, currentGrpcPort, secretStoreName, "secretWithNoPrefix")).
 		Step("Stop HashiCorp Vault server", dockercompose.Stop(dockerComposeProjectName, dockerComposeClusterYAML)).
 		Run()
 }
@@ -251,7 +256,7 @@ func TestTokenAndTokenMountPath(t *testing.T) {
 
 	currentGrpcPort, currentHttpPort := GetCurrentGRPCAndHTTPPort(t)
 
-	createFlowToTestComponentFailsRegistration := func(flowDescription string, componentSuffix string) {
+	createNegativeTestFlow := func(flowDescription string, componentSuffix string) {
 		componentPath := filepath.Join(secretStoreComponentPathBase, componentSuffix)
 		componentName := "my-hashicorp-vault-TestTokenAndTokenMountPath-" + componentSuffix
 
@@ -271,21 +276,46 @@ func TestTokenAndTokenMountPath(t *testing.T) {
 			// Instead we do a simpler negative test by ensuring a good key cannot be found
 			Step("🛑Verify component is NOT registered",
 				testComponentIsNotWorking(t, componentName, currentGrpcPort)).
+			Step("Bug depending behavior - test component is actually registered", testComponentFound(t, componentName, currentGrpcPort)).
 			Run()
 	}
 
-	createFlowToTestComponentFailsRegistration("Verify failure when BOTH vaultToken and vaultTokenMountPath are present", "both")
+	createPositiveTestFlow := func(flowDescription string, componentSuffix string) {
+		componentPath := filepath.Join(secretStoreComponentPathBase, componentSuffix)
+		componentName := "my-hashicorp-vault-TestTokenAndTokenMountPath-" + componentSuffix
 
-	createFlowToTestComponentFailsRegistration("Verify failure when NEITHER vaultToken nor vaultTokenMountPath are present", "neither")
+		flow.New(t, flowDescription).
+			Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
+			Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
+			Step(sidecar.Run(sidecarName,
+				embedded.WithoutApp(),
+				embedded.WithComponentsPath(componentPath),
+				embedded.WithDaprGRPCPort(currentGrpcPort),
+				embedded.WithDaprHTTPPort(currentHttpPort),
+				componentRuntimeOptions(),
+			)).
+			Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
+			Step("✅Verify component is registered", testComponentFound(t, componentName, currentGrpcPort)).
+			Step("Test that the default secret is found", testDefaultSecretIsFound(t, currentGrpcPort, componentName)).
+			Run()
+	}
 
-	createFlowToTestComponentFailsRegistration("Verify failure when vaultToken value does not match our servers's value", "badVaultToken")
+	createNegativeTestFlow("Verify failure when BOTH vaultToken and vaultTokenMountPath are present", "both")
+
+	createNegativeTestFlow("Verify failure when NEITHER vaultToken nor vaultTokenMountPath are present", "neither")
+
+	createNegativeTestFlow("Verify failure when vaultToken value does not match our servers's value", "badVaultToken")
+
+	createNegativeTestFlow("Verify failure when vaultTokenPath points to a non-existing file", "tokenMountPathPointsToBrokenPath")
+
+	createPositiveTestFlow("Verify success when vaultTokenPath points to an existing file matching the configured secret we have for our secret seeder", "tokenMountPathHappyCase")
 }
 
 //
 // Aux. functions
 //
 
-func testKeyValuesInSecret(t *testing.T, currentGrpcPort int, secretName string, keyValueMap map[string]string) flow.Runnable {
+func testKeyValuesInSecret(t *testing.T, currentGrpcPort int, secretStoreName string, secretName string, keyValueMap map[string]string) flow.Runnable {
 	return func(ctx flow.Context) error {
 		client, err := client.NewClientWithPort(fmt.Sprint(currentGrpcPort))
 		if err != nil {
@@ -308,7 +338,7 @@ func testKeyValuesInSecret(t *testing.T, currentGrpcPort int, secretName string,
 	}
 }
 
-func testSecretIsNotFound(t *testing.T, currentGrpcPort int, secretName string) flow.Runnable {
+func testSecretIsNotFound(t *testing.T, currentGrpcPort int, secretStoreName string, secretName string) flow.Runnable {
 	return func(ctx flow.Context) error {
 		client, err := client.NewClientWithPort(fmt.Sprint(currentGrpcPort))
 		if err != nil {
@@ -325,9 +355,17 @@ func testSecretIsNotFound(t *testing.T, currentGrpcPort int, secretName string) 
 	}
 }
 
+func testDefaultSecretIsFound(t *testing.T, currentGrpcPort int, secretStoreName string) flow.Runnable {
+	return testKeyValuesInSecret(t, currentGrpcPort, secretStoreName, "multiplekeyvaluessecret", map[string]string{
+		"first":  "1",
+		"second": "2",
+		"third":  "3",
+	})
+}
+
 func testComponentIsNotWorking(t *testing.T, targetComponentName string, currentGrpcPort int) flow.Runnable {
 	// TODO(tmacam) once https://github.com/dapr/dapr/issues/5487 is fixed, remove/replace with testComponentNotFound
-	return testSecretIsNotFound(t, currentGrpcPort, "multiplekeyvaluessecret")
+	return testSecretIsNotFound(t, currentGrpcPort, targetComponentName, "multiplekeyvaluessecret")
 }
 
 // func testComponentNotFoundAndDefaultKeysFail(t *testing.T, targetComponentName string, currentGrpcPort int) flow.Runnable {
