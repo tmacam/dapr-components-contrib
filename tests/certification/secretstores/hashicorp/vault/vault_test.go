@@ -251,59 +251,34 @@ func TestTokenAndTokenMountPath(t *testing.T) {
 
 	currentGrpcPort, currentHttpPort := GetCurrentGRPCAndHTTPPort(t)
 
-	flow.New(t, "Verify failure when BOTH vaultToken and vaultTokenMountPath are present").
-		Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
-		Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
-		Step(sidecar.Run(sidecarName,
-			embedded.WithoutApp(),
-			embedded.WithComponentsPath(filepath.Join(secretStoreComponentPathBase, "both")),
-			embedded.WithDaprGRPCPort(currentGrpcPort),
-			embedded.WithDaprHTTPPort(currentHttpPort),
-			componentRuntimeOptions(),
-		)).
-		Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
-		// Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
-		// for the component presence against the metadata registry.
-		// Instead we do a simpler negative test by ensuring a good key cannot be found
-		Step("🛑Verify component is NOT registered",
-			testComponentIsNotWorking(t, "my-hashicorp-vault-TestTokenAndTokenMountPath-both", currentGrpcPort)).
-		Run()
+	createFlowToTestComponentFailsRegistration := func(flowDescription string, componentSuffix string) {
+		componentPath := filepath.Join(secretStoreComponentPathBase, componentSuffix)
+		componentName := "my-hashicorp-vault-TestTokenAndTokenMountPath-" + componentSuffix
 
-	flow.New(t, "Verify failure when NEITHER vaultToken nor vaultTokenMountPath are present").
-		Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
-		Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
-		Step(sidecar.Run(sidecarName,
-			embedded.WithoutApp(),
-			embedded.WithComponentsPath(filepath.Join(secretStoreComponentPathBase, "neither")),
-			embedded.WithDaprGRPCPort(currentGrpcPort),
-			embedded.WithDaprHTTPPort(currentHttpPort),
-			componentRuntimeOptions(),
-		)).
-		Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
-		// Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
-		// for the component presence against the metadata registry.
-		// Instead we do a simpler negative test by ensuring a good key cannot be found
-		Step("🛑Verify component is NOT registered",
-			testComponentIsNotWorking(t, "my-hashicorp-vault-TestTokenAndTokenMountPath-both", currentGrpcPort)).
-		Run()
+		flow.New(t, flowDescription).
+			Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
+			Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
+			Step(sidecar.Run(sidecarName,
+				embedded.WithoutApp(),
+				embedded.WithComponentsPath(componentPath),
+				embedded.WithDaprGRPCPort(currentGrpcPort),
+				embedded.WithDaprHTTPPort(currentHttpPort),
+				componentRuntimeOptions(),
+			)).
+			Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
+			// Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
+			// for the component presence against the metadata registry.
+			// Instead we do a simpler negative test by ensuring a good key cannot be found
+			Step("🛑Verify component is NOT registered",
+				testComponentIsNotWorking(t, componentName, currentGrpcPort)).
+			Run()
+	}
 
-	flow.New(t, "Verify failure when vaultToken value does not match our servers's value").
-		Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
-		Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
-		Step(sidecar.Run(sidecarName,
-			embedded.WithoutApp(),
-			embedded.WithComponentsPath(filepath.Join(secretStoreComponentPathBase, "badVaultToken")),
-			embedded.WithDaprGRPCPort(currentGrpcPort),
-			embedded.WithDaprHTTPPort(currentHttpPort),
-			componentRuntimeOptions(),
-		)).
-		Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
-		// Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
-		// for the component presence against the metadata registry.
-		// Instead we do a simpler negative test by ensuring a good key cannot be found
-		Step("🛑Verify component is NOT registered",
-			testComponentIsNotWorking(t, "my-hashicorp-vault-TestTokenAndTokenMountPath-badVaultToken", currentGrpcPort)).
-		Run()
+	createFlowToTestComponentFailsRegistration("Verify failure when BOTH vaultToken and vaultTokenMountPath are present", "both")
+
+	createFlowToTestComponentFailsRegistration("Verify failure when NEITHER vaultToken nor vaultTokenMountPath are present", "neither")
+
+	createFlowToTestComponentFailsRegistration("Verify failure when vaultToken value does not match our servers's value", "badVaultToken")
 }
 
 //
