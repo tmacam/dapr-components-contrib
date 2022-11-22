@@ -16,6 +16,7 @@ package vault_test
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -154,7 +155,7 @@ func TestVaultKVPrefix(t *testing.T) {
 
 	currentGrpcPort, currentHttpPort := GetCurrentGRPCAndHTTPPort(t)
 
-	flow.New(t, "Test retrieving multiple key values from a secret").
+	flow.New(t, "Test setting a non-default vaultKVPrefix value").
 		Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
 		Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
 		Step(sidecar.Run(sidecarName,
@@ -184,7 +185,7 @@ func TestVaultKVUsePrefixFalse(t *testing.T) {
 
 	currentGrpcPort, currentHttpPort := GetCurrentGRPCAndHTTPPort(t)
 
-	flow.New(t, "Test retrieving multiple key values from a secret").
+	flow.New(t, "Test using an empty vaultKVPrefix value").
 		Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
 		Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
 		Step(sidecar.Run(sidecarName,
@@ -217,7 +218,7 @@ func TestVaultValueTypeText(t *testing.T) {
 
 	currentGrpcPort, currentHttpPort := GetCurrentGRPCAndHTTPPort(t)
 
-	flow.New(t, "Test retrieving multiple key values from a secret").
+	flow.New(t, "Test setting vaultValueType=text should cause it to behave with single-value semantics").
 		Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
 		Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
 		Step(sidecar.Run(sidecarName,
@@ -240,6 +241,68 @@ func TestVaultValueTypeText(t *testing.T) {
 			testSecretIsNotFound(t, currentGrpcPort, "secretUnderAlternativePrefix")).
 		Step("Test secret registered with no prefix cannot be found", testSecretIsNotFound(t, currentGrpcPort, "secretWithNoPrefix")).
 		Step("Stop HashiCorp Vault server", dockercompose.Stop(dockerComposeProjectName, dockerComposeClusterYAML)).
+		Run()
+}
+
+func TestTokenAndTokenMountPath(t *testing.T) {
+	const (
+		secretStoreComponentPathBase = "./components/vaultTokenAndTokenMountPath/"
+	)
+
+	currentGrpcPort, currentHttpPort := GetCurrentGRPCAndHTTPPort(t)
+
+	flow.New(t, "Verify failure when BOTH vaultToken and vaultTokenMountPath are present").
+		Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
+		Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
+		Step(sidecar.Run(sidecarName,
+			embedded.WithoutApp(),
+			embedded.WithComponentsPath(filepath.Join(secretStoreComponentPathBase, "both")),
+			embedded.WithDaprGRPCPort(currentGrpcPort),
+			embedded.WithDaprHTTPPort(currentHttpPort),
+			componentRuntimeOptions(),
+		)).
+		Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
+		// Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
+		// for the component presence against the metadata registry.
+		// Instead we do a simpler negative test by ensuring a good key cannot be found
+		Step("🛑Verify component is NOT registered",
+			testComponentIsNotWorking(t, "my-hashicorp-vault-TestTokenAndTokenMountPath-both", currentGrpcPort)).
+		Run()
+
+	flow.New(t, "Verify failure when NEITHER vaultToken nor vaultTokenMountPath are present").
+		Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
+		Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
+		Step(sidecar.Run(sidecarName,
+			embedded.WithoutApp(),
+			embedded.WithComponentsPath(filepath.Join(secretStoreComponentPathBase, "neither")),
+			embedded.WithDaprGRPCPort(currentGrpcPort),
+			embedded.WithDaprHTTPPort(currentHttpPort),
+			componentRuntimeOptions(),
+		)).
+		Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
+		// Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
+		// for the component presence against the metadata registry.
+		// Instead we do a simpler negative test by ensuring a good key cannot be found
+		Step("🛑Verify component is NOT registered",
+			testComponentIsNotWorking(t, "my-hashicorp-vault-TestTokenAndTokenMountPath-both", currentGrpcPort)).
+		Run()
+
+	flow.New(t, "Verify failure when vaultToken value does not match our servers's value").
+		Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
+		Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
+		Step(sidecar.Run(sidecarName,
+			embedded.WithoutApp(),
+			embedded.WithComponentsPath(filepath.Join(secretStoreComponentPathBase, "badVaultToken")),
+			embedded.WithDaprGRPCPort(currentGrpcPort),
+			embedded.WithDaprHTTPPort(currentHttpPort),
+			componentRuntimeOptions(),
+		)).
+		Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
+		// Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
+		// for the component presence against the metadata registry.
+		// Instead we do a simpler negative test by ensuring a good key cannot be found
+		Step("🛑Verify component is NOT registered",
+			testComponentIsNotWorking(t, "my-hashicorp-vault-TestTokenAndTokenMountPath-badVaultToken", currentGrpcPort)).
 		Run()
 }
 
@@ -287,7 +350,38 @@ func testSecretIsNotFound(t *testing.T, currentGrpcPort int, secretName string) 
 	}
 }
 
+func testComponentIsNotWorking(t *testing.T, targetComponentName string, currentGrpcPort int) flow.Runnable {
+	// TODO(tmacam) once https://github.com/dapr/dapr/issues/5487 is fixed, remove/replace with testComponentNotFound
+	return testSecretIsNotFound(t, currentGrpcPort, "multiplekeyvaluessecret")
+}
+
+// func testComponentNotFoundAndDefaultKeysFail(t *testing.T, targetComponentName string, currentGrpcPort int) flow.Runnable {
+// 	return func(ctx flow.Context) error {
+// 		// Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
+// 		// for the component presence against the metadata registry.
+// 		// if err := testComponentNotFound(t, targetComponentName, currentGrpcPort)(ctx); err != nil {
+// 		// 	return err
+// 		// }
+
+// 		// Instead we just check that the component fail queries for known the default secret
+// 		if err := testSecretIsNotFound(t, currentGrpcPort, "multiplekeyvaluessecret")(ctx); err != nil {
+// 			return err
+// 		}
+// 		return nil
+// 	}
+// }
+
 func testComponentFound(t *testing.T, targetComponentName string, currentGrpcPort int) flow.Runnable {
+	return testComponentPresence(t, targetComponentName, currentGrpcPort, true)
+}
+
+// Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
+// for the component presence against the metadata registry.
+// func testComponentNotFound(t *testing.T, targetComponentName string, currentGrpcPort int) flow.Runnable {
+// 	return testComponentPresence(t, targetComponentName, currentGrpcPort, false)
+// }
+
+func testComponentPresence(t *testing.T, targetComponentName string, currentGrpcPort int, expectedComponentFound bool) flow.Runnable {
 	return func(ctx flow.Context) error {
 		client, err := client.NewClientWithPort(fmt.Sprint(currentGrpcPort))
 		if err != nil {
@@ -306,11 +400,18 @@ func testComponentFound(t *testing.T, targetComponentName string, currentGrpcPor
 		componentFound := false
 		for _, component := range resp.GetRegisteredComponents() {
 			if component.GetName() == targetComponentName {
+				ctx.Logf("🩺 component found=%s", component)
+
 				componentFound = true
 				break
 			}
 		}
-		assert.True(t, componentFound)
+
+		if expectedComponentFound {
+			assert.True(t, componentFound, "Component was expected to be found but it was missing.")
+		} else {
+			assert.False(t, componentFound, "Component was expected to be missing but it was found.")
+		}
 
 		return nil
 	}

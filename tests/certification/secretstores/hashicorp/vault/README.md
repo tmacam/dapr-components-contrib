@@ -55,8 +55,12 @@ This secret store [supports the following features][features]:
 ### Tests for `vaultToken` and `vaultTokenMountPath`
 
 1. Verify `vaultToken` is used
+    * The baseline fo this test is all the previous test are using a known-to-work value that matches what our docker-compose environment sets up.
+    * Ensure service fails when we use a `vaultToken` value that does not match what our environment sets up
+        * set field to a bogus value <<< BAD Vault TOKEN Value>>>
+
 1. Verify `vaultTokenMountPath` is used
-1. Verify failure when both `vaultTokenMountPath` points to a broken path
+1. Verify failure when `vaultTokenMountPath` points to a broken path
 1. Verify failure when both `vaultToken` and `vaultTokenMountPath` are missing
 1. Verify failure when both `vaultToken` and `vaultTokenMountPath` are present
 
