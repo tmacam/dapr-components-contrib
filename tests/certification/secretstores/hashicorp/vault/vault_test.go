@@ -14,9 +14,14 @@ limitations under the License.
 package vault_test
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -249,6 +254,78 @@ func TestVaultValueTypeText(t *testing.T) {
 		Run()
 }
 
+type initErrorChecker func(ctx flow.Context, errorLine string) error
+
+func captureLogsAndCheckInitErrors(checker initErrorChecker) flow.Runnable {
+	// Setup log capture
+	logCaptor := &bytes.Buffer{}
+	runtimeLogger := logger.NewLogger("dapr.runtime")
+	runtimeLogger.SetOutput(io.MultiWriter(os.Stdout, logCaptor))
+
+	// Stop log capture, reset buffer just for good mesure
+	cleanup := func() {
+		logCaptor.Reset()
+		runtimeLogger.SetOutput(os.Stdout)
+	}
+
+	grepInitErrorFromLogs := func() (string, error) {
+		errorMarker := []byte("INIT_COMPONENT_FAILURE")
+		scanner := bufio.NewScanner(logCaptor)
+		for scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				return "", err
+			}
+			if bytes.Contains(scanner.Bytes(), errorMarker) {
+				return scanner.Text(), nil
+			}
+		}
+		return "", scanner.Err()
+	}
+
+	// Wraps the our initErrorChecker with cleanup and error-grepping logic so we only care about the
+	// log error
+	return func(ctx flow.Context) error {
+		defer cleanup()
+
+		errorLine, err := grepInitErrorFromLogs()
+		if err != nil {
+			return err
+		}
+		ctx.Logf("👀 errorLine: %s", errorLine)
+
+		return checker(ctx, errorLine)
+	}
+}
+
+func assertNoInitializationErrorsForComponent(componentName string) flow.Runnable {
+	checker := func(ctx flow.Context, errorLine string) error {
+		componentFailedToInitialize := strings.Contains(errorLine, componentName)
+		assert.False(ctx.T, componentFailedToInitialize,
+			"Found component name mentioned in an component initialization error message: %s", errorLine)
+
+		return nil
+	}
+
+	return captureLogsAndCheckInitErrors(checker)
+}
+
+func assertInitializationFailedWithErrorsForComponent(componentName string, additionalSubStringsToMatch ...string) flow.Runnable {
+	checker := func(ctx flow.Context, errorLine string) error {
+		assert.NotEmpty(ctx.T, errorLine, "Expected a component initialization error message but none found")
+		assert.Contains(ctx.T, errorLine, componentName,
+			"Expected to find component '%s' mentioned in error message but found none: %s", componentName, errorLine)
+
+		for _, subString := range additionalSubStringsToMatch {
+			assert.Contains(ctx.T, errorLine, subString,
+				"Expected to find '%s' mentioned in error message but found none: %s", componentName, errorLine)
+		}
+
+		return nil
+	}
+
+	return captureLogsAndCheckInitErrors(checker)
+}
+
 func TestTokenAndTokenMountPath(t *testing.T) {
 	const (
 		secretStoreComponentPathBase = "./components/vaultTokenAndTokenMountPath/"
@@ -256,9 +333,45 @@ func TestTokenAndTokenMountPath(t *testing.T) {
 
 	currentGrpcPort, currentHttpPort := GetCurrentGRPCAndHTTPPort(t)
 
-	createNegativeTestFlow := func(flowDescription string, componentSuffix string) {
+	createNegativeTestFlow := func(flowDescription string, componentSuffix string, initErrorCodes ...string) {
 		componentPath := filepath.Join(secretStoreComponentPathBase, componentSuffix)
 		componentName := "my-hashicorp-vault-TestTokenAndTokenMountPath-" + componentSuffix
+
+		// // capture log
+		// logCaptor := &bytes.Buffer{}
+		// runtimeLogger := logger.NewLogger("dapr.runtime")
+		// runtimeLogger.SetOutput(io.MultiWriter(os.Stdout, logCaptor))
+
+		// grepComponentInitError := func(capturedLog *bytes.Buffer) (string, error) {
+		// 	target := []byte("INIT_COMPONENT_FAILURE")
+		// 	scanner := bufio.NewScanner(capturedLog)
+		// 	for scanner.Scan() {
+		// 		if err := scanner.Err(); err != nil {
+		// 			return "", err
+		// 		}
+		// 		if bytes.Contains(scanner.Bytes(), target) {
+		// 			return scanner.Text(), nil
+		// 		}
+		// 	}
+		// 	return "", scanner.Err()
+		// }
+
+		// assertComponentFailedToInitialize := func(ctx flow.Context) error {
+		// 	defer logCaptor.Reset() // Just in case... would be better to runtimeLogger.SetOutput(os.Stdout)
+
+		// 	errorLine, err := grepComponentInitError(logCaptor)
+		// 	if err != nil {
+		// 		return err
+		// 	}
+
+		// 	ctx.Logf("👀 errorLine: %s", errorLine)
+
+		// 	assert.NotEmpty(t, errorLine)
+
+		// 	return err
+		// }
+
+		// verifyComponentInitializationFailedWithMessage
 
 		flow.New(t, flowDescription).
 			Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
@@ -276,6 +389,8 @@ func TestTokenAndTokenMountPath(t *testing.T) {
 			// Instead we do a simpler negative test by ensuring a good key cannot be found
 			Step("🛑Verify component is NOT registered",
 				testComponentIsNotWorking(t, componentName, currentGrpcPort)).
+			// Step("Verify error output", assertComponentFailedToInitialize).
+			Step("Verify initialization error reported for component", assertInitializationFailedWithErrorsForComponent(componentName, initErrorCodes...)).
 			Step("Bug depending behavior - test component is actually registered", testComponentFound(t, componentName, currentGrpcPort)).
 			Run()
 	}
@@ -296,17 +411,18 @@ func TestTokenAndTokenMountPath(t *testing.T) {
 			)).
 			Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
 			Step("✅Verify component is registered", testComponentFound(t, componentName, currentGrpcPort)).
+			Step("Verify no errors regarding component initialization", assertNoInitializationErrorsForComponent(componentPath)).
 			Step("Test that the default secret is found", testDefaultSecretIsFound(t, currentGrpcPort, componentName)).
 			Run()
 	}
 
-	createNegativeTestFlow("Verify failure when BOTH vaultToken and vaultTokenMountPath are present", "both")
+	// createNegativeTestFlow("Verify failure when BOTH vaultToken and vaultTokenMountPath are present", "both", "token mount path and token both set")
 
-	createNegativeTestFlow("Verify failure when NEITHER vaultToken nor vaultTokenMountPath are present", "neither")
+	// createNegativeTestFlow("Verify failure when NEITHER vaultToken nor vaultTokenMountPath are present", "neither")
 
 	createNegativeTestFlow("Verify failure when vaultToken value does not match our servers's value", "badVaultToken")
 
-	createNegativeTestFlow("Verify failure when vaultTokenPath points to a non-existing file", "tokenMountPathPointsToBrokenPath")
+	// createNegativeTestFlow("Verify failure when vaultTokenPath points to a non-existing file", "tokenMountPathPointsToBrokenPath")
 
 	createPositiveTestFlow("Verify success when vaultTokenPath points to an existing file matching the configured secret we have for our secret seeder", "tokenMountPathHappyCase")
 }
