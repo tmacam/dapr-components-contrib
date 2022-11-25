@@ -104,9 +104,13 @@ This secret store [supports the following features][features]:
 
 ### Tests for CA and other certificate-related parameters
 
-1. caCert
-1. caPath
+TODO: Should we add code to enforce that only one of these is provided?
+
 1. caPem
+1. caPath
+1. caCert
+
+1. tlsServerName
 
 1. skipVerify
 * Tested with `vaultAddr`
