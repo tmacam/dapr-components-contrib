@@ -480,16 +480,60 @@ func TestCaFamilyOfFields(t *testing.T) {
 		"Verify success when using a caPem to talk to vault with tlsServerName and enforceVerify",
 		"caPem", true)
 
-	// createPositiveTestFlow(fs,
-	// 	"Verify failure when using a caPem to talk to vault with tlsServerName and enforceVerify",
-	// 	"badTlsServerName", true)
+	createInitSucceedsButComponentFailsFlow(fs,
+		"Verify successful initialization but secret retrieval failure when `caPem` is set to a valid server certificate (baseline) but `tlsServerName` does not match the server name",
+		"badTlsServerName", true)
+
+	createInitSucceedsButComponentFailsFlow(fs,
+		"Verify successful initialization but secret retrieval failure when `caPem` is set to an invalid server certificate (flag under test) despite `tlsServerName` matching the server name ",
+		"badCaCert", true)
+
+	createPositiveTestFlow(fs,
+		"Verify success when using a caPem is invalid but skipVerify is on",
+		"badCaCertAndSkipVerify", true)
+}
+
+func TestVersioning(t *testing.T) {
+	const (
+		componentPath = "./components/versioning/"
+		componentName = "my-hashicorp-vault-TestVersioning"
+	)
+	dockerComposeClusterYAML := filepath.Join(componentPath, "docker-compose-hashicorp-vault.yml")
+
+	currentGrpcPort, currentHttpPort := GetCurrentGRPCAndHTTPPort(t)
+
+	flow.New(t, "Verify success on retrieval of a past version of a secret").
+		Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
+		Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
+		Step(sidecar.Run(sidecarName,
+			embedded.WithoutApp(),
+			embedded.WithComponentsPath(componentPath),
+			embedded.WithDaprGRPCPort(currentGrpcPort),
+			embedded.WithDaprHTTPPort(currentHttpPort),
+			// Dapr log-level debug?
+			componentRuntimeOptions(),
+		)).
+		Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
+		Step("✅Verify component is registered", testComponentFound(componentName, currentGrpcPort)).
+		Step("Verify no errors regarding component initialization", assertNoInitializationErrorsForComponent(componentPath)).
+		Step("Verify that we can list secrets", testKeyPresentInBulkList(currentGrpcPort, componentName)).
+		Step("Verify that the latest version of the secret is there", testKeyValuesInSecret(currentGrpcPort, componentName,
+			"secretUnderTest", map[string]string{
+				"versionedKey": "latestValue",
+			})).
+		Step("Verify that a past version of the secret is there", testKeyValuesInSecret(currentGrpcPort, componentName,
+			"secretUnderTest", map[string]string{
+				"versionedKey": "secondVersion",
+			}, "2")).
+		Step("Stop HashiCorp Vault server", dockercompose.Stop(dockerComposeProjectName, dockerComposeClusterYAML)).
+		Run()
 }
 
 //
 // Aux. functions
 //
 
-func testKeyValuesInSecret(currentGrpcPort int, secretStoreName string, secretName string, keyValueMap map[string]string) flow.Runnable {
+func testKeyValuesInSecret(currentGrpcPort int, secretStoreName string, secretName string, keyValueMap map[string]string, maybe_version_id ...string) flow.Runnable {
 	return func(ctx flow.Context) error {
 		client, err := client.NewClientWithPort(fmt.Sprint(currentGrpcPort))
 		if err != nil {
@@ -497,9 +541,12 @@ func testKeyValuesInSecret(currentGrpcPort int, secretStoreName string, secretNa
 		}
 		defer client.Close()
 
-		emptyOpt := map[string]string{}
+		metadata := map[string]string{}
+		if len(maybe_version_id) > 0 {
+			metadata["version_id"] = maybe_version_id[0]
+		}
 
-		res, err := client.GetSecret(ctx, secretStoreName, secretName, emptyOpt)
+		res, err := client.GetSecret(ctx, secretStoreName, secretName, metadata)
 		assert.NoError(ctx.T, err)
 		assert.NotNil(ctx.T, res)
 
@@ -830,6 +877,33 @@ func createPositiveTestFlow(fs *commonFlowSettings, flowDescription string, comp
 		Step("✅Verify component is registered", testComponentFound(componentName, fs.currentGrpcPort)).
 		Step("Verify no errors regarding component initialization", assertNoInitializationErrorsForComponent(componentPath)).
 		Step("Test that the default secret is found", testDefaultSecretIsFound(fs.currentGrpcPort, componentName)).
+		Step("Stop HashiCorp Vault server", dockercompose.Stop(dockerComposeProjectName, dockerComposeClusterYAML)).
+		Run()
+}
+
+func createInitSucceedsButComponentFailsFlow(fs *commonFlowSettings, flowDescription string, componentSuffix string, useCustomDockerCompose bool, initErrorCodes ...string) {
+	componentPath := filepath.Join(fs.secretStoreComponentPathBase, componentSuffix)
+	componentName := fs.componentNamePrefix + componentSuffix
+
+	dockerComposeClusterYAML := defaultDockerComposeClusterYAML
+	if useCustomDockerCompose {
+		dockerComposeClusterYAML = filepath.Join(componentPath, "docker-compose-hashicorp-vault.yml")
+	}
+
+	flow.New(fs.t, flowDescription).
+		Step(dockercompose.Run(dockerComposeProjectName, dockerComposeClusterYAML)).
+		Step("Waiting for component to start...", flow.Sleep(5*time.Second)).
+		Step(sidecar.Run(sidecarName,
+			embedded.WithoutApp(),
+			embedded.WithComponentsPath(componentPath),
+			embedded.WithDaprGRPCPort(fs.currentGrpcPort),
+			embedded.WithDaprHTTPPort(fs.currentHttpPort),
+			componentRuntimeOptions(),
+		)).
+		Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
+		Step("✅Verify component is registered", testComponentFound(componentName, fs.currentGrpcPort)).
+		Step("Verify no errors regarding component initialization", assertNoInitializationErrorsForComponent(componentPath)).
+		Step("🛑Verify component does not work", testComponentIsNotWorking(componentName, fs.currentGrpcPort)).
 		Step("Stop HashiCorp Vault server", dockercompose.Stop(dockerComposeProjectName, dockerComposeClusterYAML)).
 		Run()
 }

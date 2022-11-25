@@ -1,7 +1,7 @@
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: my-hashicorp-vault-TestCaFamilyOfFields-badTlsServerName
+  name: my-hashicorp-vault-TestCaFamilyOfFields-badCaCert
   namespace: default
 spec:
   type: secretstores.hashicorp.vault
@@ -15,6 +15,6 @@ spec:
   - name: vaultToken  # Matches docker compose VAULT_DEV_ROOT_TOKEN_ID env. var.
     value: "vault-dev-root-token-id"
   - name: tlsServerName
-    value: badTlsServerName # <<<<< Ooops, this won't match our cert.
+    value: hashicorp_vault
   - name: caCert
-    value: components/caFamily/certificates/cert.pem
+    value: components/caFamily/certificates/incorrect-ca-cert.pem # <<<<< We should fail authentication

@@ -78,7 +78,7 @@ This secret store [supports the following features][features]:
     * Start a vault instance in dev-mode (HTTP) but listening on a non-std port
     * Modify component configuration to use this non-std port
     * Ensure component initialization success and successful retrieval of secrets
-1. Verify successful initialization but secret retrieval failure  when `vaultAddr` points to an address not served by a Vault
+1. Verify successful initialization but secret retrieval failure when `vaultAddr` points to an address not served by a Vault
     * Start a vault instance in dev-mode (HTTP) listening on std port
     * Modify component configuration to use a distinct (non-std) port
     * Ensure component initialization success but secret retrieval failure
@@ -97,32 +97,37 @@ This secret store [supports the following features][features]:
     * Verify that the custom path-specific secret is found
 
 
-## Pending 
-
-
-
-
 ### Tests for CA and other certificate-related parameters
 
 TODO: Should we add code to enforce that only one of these is provided?
 
-1. caPem
-1. caPath
-1. caCert
+1. Verify happy-case behavior when `caPem` is set to valid CA certificate and `tlsServerName` matches the server name and `skipVerify` is false.
+1. Verify happy-case behavior when `caPath` is set to valid CA certificate and `tlsServerName` matches the server name and `skipVerify` is false.
+1. Verify happy-case behavior when `caCert` is set to valid CA certificate and `tlsServerName` matches the server name and `skipVerify` is false.
+1. Verify successful initialization but secret retrieval failure when `caPem` is set to a valid server certificate (baseline) but `tlsServerName` does not match the server name and `skipVerify` is false.
+1. Verify successful initialization but secret retrieval failure when `caPem` is set to an invalid server certificate (flag under test) despite `tlsServerName` matching the server name and `skipVerify` is false.
 
-1. tlsServerName
+1. Same as the one above but `skipVerify` is true and we should observe happy-case behavior.
 
 1. skipVerify
-* Tested with `vaultAddr`
+   * We also tested before with the vault-generated self-signed cert while testing for `vaultAddr`
 
 
-VERSIONS!!!! Are we able to retrieve a given version of a secret?
+#### Versioning
+
+1. Verify success on retrieval of a past version of a secret 
+    * Start a vault instance in dev-mode (HTTP)
+    * Seed vault instance with multiple versions of a single secret
+    * Use standard component configuration
+    * Ensure component initialization success
+    * Ensure successful retrieval of latest version of the secret
+    * Ensure successful retrieval of an specific version of the secret 
+
 
 ## Out of scope
 
-
-1. Verifying how vault handles request for past versions of a secret
-    * Vault only handles engines with version support
+1. Verifying how vault component handles engines that do not support versioning, like KV version 1
+    * Vault component only handles engines with version support (Bug?)
 1. Tests verifying writing and updating a secret since secret stores do not expose this functionality. 
 
 
@@ -130,8 +135,24 @@ VERSIONS!!!! Are we able to retrieve a given version of a secret?
 
 Under the current directory run:
 
-```
+```shell
 GOLANG_PROTOBUF_REGISTRATION_CONFLICT=warn go test -v vault_test.go
+```
+
+To run an specific test run (replacing `TestVersioning` with the name of the test method):
+
+```shell
+GOLANG_PROTOBUF_REGISTRATION_CONFLICT=warn go test -run TestVersioning  -v vault_test.go
+```
+
+### Docker-compose
+
+You might need to verify if docker-compose is doing what you think it is doing: seeding the right secrets or even booting up properly.
+
+Head to the directory hosting the `docker-compose-hashicorp-vault.yml` file and run:
+
+```shell
+docker-compose -f docker-compose-hashicorp-vault.yml up --remove-orphans
 ```
 
 # References:
@@ -140,7 +161,10 @@ GOLANG_PROTOBUF_REGISTRATION_CONFLICT=warn go test -v vault_test.go
 * [List of secret store components and their features][features]
 * [PR with Conformance tests for Hashicorp Vault][conformance]
 * [HashiCorp Vault API reference](https://www.vaultproject.io/api-docs)
+* [Vault Official Docker image documentation][vault-docker]
+
 
 [HashiCorp Vault Secret Store]: https://docs.dapr.io/reference/components-reference/supported-secret-stores/hashicorp-vault/
 [features]: https://docs.dapr.io/reference/components-reference/supported-secret-stores/
 [conformance]: https://github.com/dapr/components-contrib/pull/2031
+[vault-docker]: https://hub.docker.com/_/vault/
