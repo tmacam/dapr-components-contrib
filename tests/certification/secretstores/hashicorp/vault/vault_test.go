@@ -459,9 +459,6 @@ func testDefaultSecretIsFound(currentGrpcPort int, secretStoreName string) flow.
 }
 
 func testComponentIsNotWorking(targetComponentName string, currentGrpcPort int) flow.Runnable {
-	// TODO(tmacam) once https://github.com/dapr/dapr/issues/5487 is fixed, remove/replace with testComponentNotFound
-	//return testComponentNotFound(targetComponentName, currentGrpcPort)
-
 	return testSecretIsNotFound(currentGrpcPort, targetComponentName, "multiplekeyvaluessecret")
 }
 
@@ -505,13 +502,17 @@ func testComponentFound(targetComponentName string, currentGrpcPort int) flow.Ru
 
 // Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
 // for the component presence against the metadata registry.
+// Instead, we turned testComponentNotFound into a simpler negative test that ensures a good key cannot be found
 func testComponentNotFound(targetComponentName string, currentGrpcPort int) flow.Runnable {
-	return func(ctx flow.Context) error {
-		// Find the component
-		componentFound, _ := getComponentCapabilities(ctx, currentGrpcPort, targetComponentName)
-		assert.False(ctx.T, componentFound, "Component was expected to be missing but it was found.")
-		return nil
-	}
+	// TODO(tmacam) once https://github.com/dapr/dapr/issues/5487 is fixed, uncomment the code bellow
+	return testSecretIsNotFound(currentGrpcPort, targetComponentName, "multiplekeyvaluessecret")
+
+	//return func(ctx flow.Context) error {
+	//	// Find the component
+	//	componentFound, _ := getComponentCapabilities(ctx, currentGrpcPort, targetComponentName)
+	//	assert.False(ctx.T, componentFound, "Component was expected to be missing but it was found.")
+	//	return nil
+	//}
 }
 
 func testComponentDoesNotHaveFeature(currentGrpcPort int, targetComponentName string, targetCapability secretstores.Feature) flow.Runnable {
@@ -768,13 +769,10 @@ func createNegativeTestFlow(fs *commonFlowSettings, flowDescription string, comp
 			componentRuntimeOptions(),
 		)).
 		Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
-		// Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
-		// for the component presence against the metadata registry.
-		// Instead we do a simpler negative test by ensuring a good key cannot be found
-		Step("🛑Verify component is NOT registered",
-			testComponentIsNotWorking(componentName, fs.currentGrpcPort)).
+		// TODO(tmacam) FIX https://github.com/dapr/dapr/issues/5487
+		Step("🛑Verify component is NOT registered", testComponentNotFound(componentName, fs.currentGrpcPort)).
 		Step("Verify initialization error reported for component", assertInitializationFailedWithErrorsForComponent(componentName, initErrorCodes...)).
-		Step("🐞😱 Bug depending behavior - test component is actually registered", testComponentFound(componentName, fs.currentGrpcPort)).
+		Step("🐞😱 Bug dependant behavior - test component is actually registered", testComponentFound(componentName, fs.currentGrpcPort)).
 		Step("Stop HashiCorp Vault server", dockercompose.Stop(dockerComposeProjectName, dockerComposeClusterYAML)).
 		Run()
 }
