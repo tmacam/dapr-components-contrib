@@ -316,7 +316,7 @@ func TestEnginePathCustomSecretsPath(t *testing.T) {
 		Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
 		Step("✅Verify component is registered", testComponentFound(componentName, currentGrpcPort)).
 		Step("Verify no errors regarding component initialization", assertNoInitializationErrorsForComponent(componentPath)).
-		Step("Verify that the custom path has secrets under it", testKeyPresentInBulkList(currentGrpcPort, componentName)).
+		Step("Verify that the custom path has secrets under it", testGetBulkSecretsWorksAndFoundKeys(currentGrpcPort, componentName)).
 		Step("Verify that the custom path-specific secret is found", testKeyValuesInSecret(currentGrpcPort, componentName,
 			"secretUnderCustomPath", map[string]string{
 				"the":  "trick",
@@ -390,7 +390,7 @@ func TestVersioning(t *testing.T) {
 		Step("Waiting for component to load...", flow.Sleep(5*time.Second)).
 		Step("✅Verify component is registered", testComponentFound(componentName, currentGrpcPort)).
 		Step("Verify no errors regarding component initialization", assertNoInitializationErrorsForComponent(componentPath)).
-		Step("Verify that we can list secrets", testKeyPresentInBulkList(currentGrpcPort, componentName)).
+		Step("Verify that we can list secrets", testGetBulkSecretsWorksAndFoundKeys(currentGrpcPort, componentName)).
 		Step("Verify that the latest version of the secret is there", testKeyValuesInSecret(currentGrpcPort, componentName,
 			"secretUnderTest", map[string]string{
 				"versionedKey": "latestValue",
@@ -404,7 +404,7 @@ func TestVersioning(t *testing.T) {
 }
 
 //
-// Aux. functions
+// Aux. functions for testing key presence
 //
 
 func testKeyValuesInSecret(currentGrpcPort int, secretStoreName string, secretName string, keyValueMap map[string]string, maybeVersionID ...string) flow.Runnable {
@@ -460,10 +460,12 @@ func testDefaultSecretIsFound(currentGrpcPort int, secretStoreName string) flow.
 
 func testComponentIsNotWorking(targetComponentName string, currentGrpcPort int) flow.Runnable {
 	// TODO(tmacam) once https://github.com/dapr/dapr/issues/5487 is fixed, remove/replace with testComponentNotFound
+	//return testComponentNotFound(targetComponentName, currentGrpcPort)
+
 	return testSecretIsNotFound(currentGrpcPort, targetComponentName, "multiplekeyvaluessecret")
 }
 
-func testKeyPresentInBulkList(currentGrpcPort int, secretStoreName string) flow.Runnable {
+func testGetBulkSecretsWorksAndFoundKeys(currentGrpcPort int, secretStoreName string) flow.Runnable {
 	return func(ctx flow.Context) error {
 		client, err := client.NewClientWithPort(fmt.Sprint(currentGrpcPort))
 		if err != nil {
@@ -476,6 +478,7 @@ func testKeyPresentInBulkList(currentGrpcPort int, secretStoreName string) flow.
 		res, err := client.GetBulkSecret(ctx, secretStoreName, emptyOpt)
 		assert.NoError(ctx.T, err)
 		assert.NotNil(ctx.T, res)
+		assert.NotEmpty(ctx.T, res)
 
 		for k, v := range res {
 			ctx.Logf("💡 %s", k)
@@ -488,64 +491,25 @@ func testKeyPresentInBulkList(currentGrpcPort int, secretStoreName string) flow.
 	}
 }
 
-// func testComponentNotFoundAndDefaultKeysFail(targetComponentName string, currentGrpcPort int) flow.Runnable {
-// 	return func(ctx flow.Context) error {
-// 		// Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
-// 		// for the component presence against the metadata registry.
-// 		// if err := testComponentNotFound(t, targetComponentName, currentGrpcPort)(ctx); err != nil {
-// 		// 	return err
-// 		// }
-
-// 		// Instead we just check that the component fail queries for known the default secret
-// 		if err := testSecretIsNotFound(currentGrpcPort, "multiplekeyvaluessecret")(ctx); err != nil {
-// 			return err
-// 		}
-// 		return nil
-// 	}
-// }
+//
+// Helper methods for checking component registration and availability of its features
+//
 
 func testComponentFound(targetComponentName string, currentGrpcPort int) flow.Runnable {
-	return testComponentPresence(targetComponentName, currentGrpcPort, true)
+	return func(ctx flow.Context) error {
+		componentFound, _ := getComponentCapabilities(ctx, currentGrpcPort, targetComponentName)
+		assert.True(ctx.T, componentFound, "Component was expected to be found but it was missing.")
+		return nil
+	}
 }
 
 // Due to https://github.com/dapr/dapr/issues/5487 we cannot perform negative tests
 // for the component presence against the metadata registry.
-// func testComponentNotFound(targetComponentName string, currentGrpcPort int) flow.Runnable {
-// 	return testComponentPresence(t, targetComponentName, currentGrpcPort, false)
-// }
-
-func testComponentPresence(targetComponentName string, currentGrpcPort int, expectedComponentFound bool) flow.Runnable {
+func testComponentNotFound(targetComponentName string, currentGrpcPort int) flow.Runnable {
 	return func(ctx flow.Context) error {
-		client, err := client.NewClientWithPort(fmt.Sprint(currentGrpcPort))
-		if err != nil {
-			panic(err)
-		}
-		defer client.Close()
-
-		clientCtx := context.Background()
-
-		resp, err := client.GrpcClient().GetMetadata(clientCtx, &empty.Empty{})
-		assert.NoError(ctx.T, err)
-		assert.NotNil(ctx.T, resp)
-		assert.NotNil(ctx.T, resp.GetRegisteredComponents())
-
 		// Find the component
-		componentFound := false
-		for _, component := range resp.GetRegisteredComponents() {
-			if component.GetName() == targetComponentName {
-				ctx.Logf("🩺 component found=%s", component)
-
-				componentFound = true
-				break
-			}
-		}
-
-		if expectedComponentFound {
-			assert.True(ctx.T, componentFound, "Component was expected to be found but it was missing.")
-		} else {
-			assert.False(ctx.T, componentFound, "Component was expected to be missing but it was found.")
-		}
-
+		componentFound, _ := getComponentCapabilities(ctx, currentGrpcPort, targetComponentName)
+		assert.False(ctx.T, componentFound, "Component was expected to be missing but it was found.")
 		return nil
 	}
 }
@@ -560,34 +524,12 @@ func testComponentHasFeature(currentGrpcPort int, targetComponentName string, ta
 
 func testComponentAndFeaturePresence(currentGrpcPort int, targetComponentName string, targetCapability secretstores.Feature, expectedToBeFound bool) flow.Runnable {
 	return func(ctx flow.Context) error {
-		client, err := client.NewClientWithPort(fmt.Sprint(currentGrpcPort))
-		if err != nil {
-			panic(err)
-		}
-		defer client.Close()
+		componentFound, capabilities := getComponentCapabilities(ctx, currentGrpcPort, targetComponentName)
 
-		clientCtx := context.Background()
+		assert.True(ctx.T, componentFound, "Component was expected to be found but it was missing.")
 
-		resp, err := client.GrpcClient().GetMetadata(clientCtx, &empty.Empty{})
-		assert.NoError(ctx.T, err)
-		assert.NotNil(ctx.T, resp)
-		assert.NotNil(ctx.T, resp.GetRegisteredComponents())
-
-		// Find the component
-		var capabilities []string = []string{}
-		for _, component := range resp.GetRegisteredComponents() {
-			if component.GetName() == targetComponentName {
-				capabilities = component.GetCapabilities()
-				break
-			}
-		}
-
-		if expectedToBeFound {
-			assert.NotEmpty(ctx.T, capabilities)
-		}
-
-		// Find capability
 		targetCapabilityAsString := string(targetCapability)
+		// Find capability
 		capabilityFound := false
 		for _, cap := range capabilities {
 			if cap == targetCapabilityAsString {
@@ -600,6 +542,34 @@ func testComponentAndFeaturePresence(currentGrpcPort int, targetComponentName st
 		return nil
 	}
 }
+
+func getComponentCapabilities(ctx flow.Context, currentGrpcPort int, targetComponentName string) (found bool, capabilities []string) {
+	daprClient, err := client.NewClientWithPort(fmt.Sprint(currentGrpcPort))
+	if err != nil {
+		panic(err)
+	}
+	defer daprClient.Close()
+
+	clientCtx := context.Background()
+
+	resp, err := daprClient.GrpcClient().GetMetadata(clientCtx, &empty.Empty{})
+	assert.NoError(ctx.T, err)
+	assert.NotNil(ctx.T, resp)
+	assert.NotNil(ctx.T, resp.GetRegisteredComponents())
+
+	// Find the component
+	for _, component := range resp.GetRegisteredComponents() {
+		if component.GetName() == targetComponentName {
+			ctx.Logf("🩺 component found=%s", component)
+			return true, component.GetCapabilities()
+		}
+	}
+	return false, []string{}
+}
+
+//
+// Flow and test setup helpers
+//
 
 func componentRuntimeOptions() []runtime.Option {
 	log := logger.NewLogger("dapr.components")
